@@ -9,7 +9,6 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
-        // use your SSH credential id
         git url: 'git@github.com:johnson175333/my-apache-app.git',
             branch: 'main',
             credentialsId: 'github-ssh'
@@ -18,50 +17,51 @@ pipeline {
 
     stage('Build Docker Image') {
       steps {
-        sh '''
-          set -euo pipefail
-          echo "Building image ${IMAGE}:${BUILD_NUMBER}"
-          docker build -t ${IMAGE}:latest -t ${IMAGE}:${BUILD_NUMBER} .
-        '''
+        // use bash explicitly so pipefail works
+        sh """
+          bash -lc '
+            set -euo pipefail
+            echo "Building ${IMAGE}:${BUILD_NUMBER}"
+            docker build -t ${IMAGE}:latest -t ${IMAGE}:${BUILD_NUMBER} .
+          '
+        """
       }
     }
 
     stage('Run Apache Container') {
       steps {
-        sh '''
-          set -euo pipefail
-          CN=${CN}
-          IMG=${IMAGE}:${BUILD_NUMBER}
+        sh """
+          bash -lc '
+            set -euo pipefail
+            CN=${CN}
+            IMG=${IMAGE}:${BUILD_NUMBER}
 
-          echo "Ensuring no previous container named $CN exists"
-          if docker ps -a --format '{{.Names}}' | grep -qw "$CN"; then
-            docker rm -f "$CN" || true
-          fi
+            echo "Removing any existing container named $CN"
+            if docker ps -a --format "{{.Names}}" | grep -qw "$CN"; then
+              docker rm -f "$CN" || true
+            fi
 
-          # If port 80 on host is in use, fallback to 8080
-          if ss -ltn '( sport = :80 )' | grep -q LISTEN; then
-            echo "Port 80 is in use on the host — starting container on host port 8080"
-            docker run --name "$CN" -d -p 8080:80 "$IMG"
-            echo "Container started at host port 8080"
-          else
-            echo "Port 80 is free — starting container on host port 80"
-            docker run --name "$CN" -d -p 80:80 "$IMG"
-            echo "Container started at host port 80"
-          fi
-        '''
+            # choose host port: 80 if free, else 8080
+            if ss -ltn "( sport = :80 )" | grep -q LISTEN; then
+              echo "Host port 80 is in use, falling back to 8080"
+              docker run --name "$CN" -d -p 8080:80 "$IMG"
+              echo "Started container on host port 8080"
+            else
+              echo "Host port 80 is free, starting on 80"
+              docker run --name "$CN" -d -p 80:80 "$IMG"
+              echo "Started container on host port 80"
+            fi
+          '
+        """
       }
     }
   }
 
   post {
     always {
-      sh 'echo "Docker images on host:"; docker images --format "{{.Repository}}:{{.Tag}} {{.ID}} {{.Size}}" || true'
+      sh "bash -lc 'echo Docker images on host; docker images --format \"{{.Repository}}:{{.Tag}} {{.ID}} {{.Size}}\" || true'"
     }
-    success {
-      echo "Pipeline finished SUCCESS"
-    }
-    failure {
-      echo "Pipeline finished FAILURE"
-    }
+    success { echo "Pipeline finished SUCCESS" }
+    failure { echo "Pipeline finished FAILURE" }
   }
 }
