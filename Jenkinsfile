@@ -17,11 +17,11 @@ pipeline {
 
     stage('Build Docker Image') {
       steps {
-        // use bash explicitly so pipefail works
+        // run under bash so pipefail works
         sh """
           bash -lc '
             set -euo pipefail
-            echo "Building ${IMAGE}:${BUILD_NUMBER}"
+            echo "Building image ${IMAGE}:${BUILD_NUMBER}"
             docker build -t ${IMAGE}:latest -t ${IMAGE}:${BUILD_NUMBER} .
           '
         """
@@ -33,23 +33,25 @@ pipeline {
         sh """
           bash -lc '
             set -euo pipefail
-            CN=${CN}
-            IMG=${IMAGE}:${BUILD_NUMBER}
 
-            echo "Removing any existing container named $CN"
+            # compute image tag inside shell (avoid groovy variable usage)
+            IMG="${IMAGE}:${BUILD_NUMBER}"
+            CN="${CN}"
+
+            echo "Removing any existing container named $CN (if present)"
             if docker ps -a --format "{{.Names}}" | grep -qw "$CN"; then
               docker rm -f "$CN" || true
             fi
 
-            # choose host port: 80 if free, else 8080
+            # choose port
             if ss -ltn "( sport = :80 )" | grep -q LISTEN; then
-              echo "Host port 80 is in use, falling back to 8080"
+              echo "Host port 80 is busy — using 8080"
               docker run --name "$CN" -d -p 8080:80 "$IMG"
-              echo "Started container on host port 8080"
+              echo "Started $CN on host:8080"
             else
-              echo "Host port 80 is free, starting on 80"
+              echo "Host port 80 is free — using 80"
               docker run --name "$CN" -d -p 80:80 "$IMG"
-              echo "Started container on host port 80"
+              echo "Started $CN on host:80"
             fi
           '
         """
@@ -59,9 +61,13 @@ pipeline {
 
   post {
     always {
-      sh "bash -lc 'echo Docker images on host; docker images --format \"{{.Repository}}:{{.Tag}} {{.ID}} {{.Size}}\" || true'"
+      sh "bash -lc 'echo \"Docker images on host:\"; docker images --format \"{{.Repository}}:{{.Tag}} {{.ID}} {{.Size}}\" || true'"
     }
-    success { echo "Pipeline finished SUCCESS" }
-    failure { echo "Pipeline finished FAILURE" }
+    success {
+      echo "Pipeline finished SUCCESS"
+    }
+    failure {
+      echo "Pipeline finished FAILURE"
+    }
   }
 }
