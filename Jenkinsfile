@@ -17,7 +17,6 @@ pipeline {
 
     stage('Build Docker Image') {
       steps {
-        // run under bash so pipefail works
         sh """
           bash -lc '
             set -euo pipefail
@@ -33,25 +32,22 @@ pipeline {
         sh """
           bash -lc '
             set -euo pipefail
-
-            # compute image tag inside shell (avoid groovy variable usage)
             IMG="${IMAGE}:${BUILD_NUMBER}"
             CN="${CN}"
 
-            echo "Removing any existing container named $CN (if present)"
+            echo "Removing any existing container named $CN"
             if docker ps -a --format "{{.Names}}" | grep -qw "$CN"; then
               docker rm -f "$CN" || true
             fi
 
-            # choose port
             if ss -ltn "( sport = :80 )" | grep -q LISTEN; then
-              echo "Host port 80 is busy — using 8080"
+              echo "Host port 80 in use — using 8080"
               docker run --name "$CN" -d -p 8080:80 "$IMG"
-              echo "Started $CN on host:8080"
+              echo "Started $CN → host:8080"
             else
-              echo "Host port 80 is free — using 80"
+              echo "Host port 80 free — using 80"
               docker run --name "$CN" -d -p 80:80 "$IMG"
-              echo "Started $CN on host:80"
+              echo "Started $CN → host:80"
             fi
           '
         """
@@ -61,7 +57,7 @@ pipeline {
 
   post {
     always {
-      sh "bash -lc 'echo \"Docker images on host:\"; docker images --format \"{{.Repository}}:{{.Tag}} {{.ID}} {{.Size}}\" || true'"
+      sh "bash -lc 'echo Docker images on host; docker images --format \"{{.Repository}}:{{.Tag}} {{.ID}} {{.Size}}\" || true'"
     }
     success {
       echo "Pipeline finished SUCCESS"
