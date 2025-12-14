@@ -11,7 +11,7 @@ pipeline {
       steps {
         git url: 'git@github.com:johnson175333/my-apache-app.git',
             branch: 'main',
-            credentialsId: 'github-ssh'
+            credentialsId: 'github-pat'
       }
     }
 
